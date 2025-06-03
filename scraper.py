@@ -1,18 +1,19 @@
-
 import requests
 from bs4 import BeautifulSoup
 import time
-import csv
+import os
+import json
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    "User-Agent": "Mozilla/5.0"
 }
 
 COUNTRIES = ["Spain", "France", "Germany", "United Kingdom", "Italy", "Turkey"]
 SEARCH_TEMPLATE = "tennis academy in {} site:.com"
 
 def search_google(query):
-    # Folosește StartPage ca proxy pentru Google Search (gratuit și legal)
     url = "https://www.startpage.com/sp/search"
     params = {"query": query}
     response = requests.get(url, headers=HEADERS, params=params)
@@ -34,13 +35,29 @@ def scrape_academy_page(url):
     except Exception as e:
         return {"academy": "ERROR", "address": "", "website": url, "details": str(e)}
 
+def send_to_google_sheet(rows):
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds_dict = json.loads(os.getenv("GOOGLE_CREDENTIALS_JSON"))
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
+
+    sheet = client.open_by_key(os.getenv("GOOGLE_SHEET_ID")).sheet1
+
+    # Header
+    if sheet.row_count < 1 or sheet.cell(1, 1).value != "Country":
+        sheet.append_row(["Country", "Academy", "Address", "Website", "Details"])
+
+    for row in rows:
+        sheet.append_row([row["country"], row["academy"], row["address"], row["website"], row["details"]])
+        time.sleep(1)
+
 def run():
     all_data = []
     for country in COUNTRIES:
         query = SEARCH_TEMPLATE.format(country)
         print(f"Searching academies in {country}...")
         links = search_google(query)
-        for link in links[:5]:  # Limităm pentru testare
+        for link in links[:5]:
             print(f"Scraping: {link}")
             data = scrape_academy_page(link)
             data["country"] = country
@@ -48,10 +65,7 @@ def run():
             time.sleep(2)
         time.sleep(5)
 
-    with open("academies.csv", "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["country", "academy", "address", "website", "details"])
-        writer.writeheader()
-        writer.writerows(all_data)
+    send_to_google_sheet(all_data)
 
 if __name__ == "__main__":
     run()
