@@ -1,0 +1,7 @@
+
+services:
+  - type: worker
+    name: tennis-academy-scraper
+    runtime: python
+    buildCommand: ""
+    startCommand: "python scraper.py"
